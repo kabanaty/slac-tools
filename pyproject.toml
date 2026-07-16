@@ -11,7 +11,12 @@ classifiers = [
 ]
 dependencies = [
     "pyepics",
+    "img2pdf",
+    "Pillow",
 ]
+
+[project.scripts]
+physics-elog = "slac_tools.physicselog:main"
 description = "Shared utilities for LCLS high-level applications"
 name = "slac-tools"
 version = "0.1.0"
