@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -50,14 +51,18 @@ def submit_entry(
     if not title:
         raise PhysicsElogError("Cannot submit an entry without a title.")
 
+    attachment_path = Path(attachment) if attachment else None
+
     data_dir = _resolve_data_dir(logbook, config)
     if data_dir is None:
-        _send_to_printer(Path(attachment) if attachment else None, f"physics-{logbook}log")
-        return Path(str(attachment)) if attachment else Path()
+        # _send_to_printer raises if attachment_path is None
+        _send_to_printer(attachment_path, f"physics-{logbook}log")
+        assert attachment_path is not None
+        return attachment_path
 
     timestamp = datetime.now()
     time_string = timestamp.strftime("%Y-%m-%dT%H:%M:%S")
-    base_name = time_string + "-00"
+    base_name = f"{time_string}-{os.getpid():05d}"
 
     tmp_xml = config.tmp_dir / f"{base_name}.xml"
     tmp_pdf = config.tmp_dir / f"{base_name}.pdf"
@@ -66,8 +71,7 @@ def submit_entry(
     attachment_filename: str | None = None
     thumbnail_filename: str | None = None
 
-    if attachment is not None:
-        attachment_path = Path(attachment)
+    if attachment_path is not None:
         _convert_to_pdf(attachment_path, tmp_pdf)
         attachment_filename = f"{base_name}.pdf"
 
@@ -110,7 +114,7 @@ def _build_entry_xml(
     timestamp: datetime,
 ) -> str:
     """Build the XML string for a logbook entry."""
-    log_entry = Element(None)
+    log_entry = Element("log_entry")
     log_entry.attrib["type"] = "LOGENTRY"
 
     severity = SubElement(log_entry, "severity")
@@ -165,8 +169,16 @@ def _generate_thumbnail(image_path: Path, output_path: Path, max_size: tuple[int
         img.save(output_path, "PNG")
 
 
+_SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".gif", ".bmp"}
+
+
 def _convert_to_pdf(image_path: Path, output_path: Path) -> None:
     """Convert image to PDF using img2pdf (lossless)."""
+    if image_path.suffix.lower() not in _SUPPORTED_IMAGE_SUFFIXES:
+        raise PhysicsElogError(
+            f"Unsupported attachment format '{image_path.suffix}'. "
+            f"Supported: {', '.join(sorted(_SUPPORTED_IMAGE_SUFFIXES))}"
+        )
     with open(output_path, "wb") as f:
         f.write(img2pdf.convert(str(image_path)))
 
@@ -183,10 +195,13 @@ def _send_to_printer(image_path: Path | None, printer: str) -> None:
     """Convert to PostScript and print via lpr."""
     if image_path is None:
         raise PhysicsElogError("Cannot print without an attachment.")
-    ps_path = image_path.with_suffix(".ps")
+    eps_path = image_path.with_suffix(".eps")
     with Image.open(image_path) as img:
-        img.save(ps_path, "EPS")
-    subprocess.run(["lpr", "-P", printer, str(ps_path)], check=True)
+        img.save(eps_path, "EPS")
+    try:
+        subprocess.run(["lpr", "-P", printer, str(eps_path)], check=True)
+    except subprocess.CalledProcessError as e:
+        raise PhysicsElogError(f"Printing to {printer} failed: {e}") from e
 
 
 def main() -> None:
