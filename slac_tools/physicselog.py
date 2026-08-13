@@ -61,7 +61,7 @@ def submit_entry(
         return attachment_path
 
     timestamp = datetime.now()
-    time_string = timestamp.strftime("%Y-%m-%dT%H:%M:%S")
+    time_string = timestamp.strftime("%Y-%m-%dT%H%M%S")
     base_name = f"{time_string}-{os.getpid():05d}"
 
     tmp_xml = config.tmp_dir / f"{base_name}.xml"
@@ -141,7 +141,7 @@ def _build_entry_xml(
     title_tag = SubElement(log_entry, "title")
     title_tag.text = title
 
-    time_string = timestamp.strftime("%Y-%m-%dT%H:%M:%S")
+    time_string = timestamp.strftime("%Y-%m-%dT%H%M%S")
     metainfo = SubElement(log_entry, "metainfo")
     metainfo.text = f"{time_string}-00.xml"
 
