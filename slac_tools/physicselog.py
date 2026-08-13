@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from xml.etree.ElementTree import Element, SubElement, tostring
 
 import img2pdf
 from PIL import Image
@@ -85,6 +83,7 @@ def submit_entry(
         username=username,
         title=title,
         text=text,
+        base_name=base_name,
         attachment_filename=attachment_filename,
         thumbnail_filename=thumbnail_filename,
         timestamp=timestamp,
@@ -109,57 +108,49 @@ def _build_entry_xml(
     username: str,
     title: str,
     text: str | None,
+    base_name: str,
     attachment_filename: str | None,
     thumbnail_filename: str | None,
     timestamp: datetime,
 ) -> str:
-    """Build the XML string for a logbook entry."""
-    log_entry = Element("log_entry")
-    log_entry.attrib["type"] = "LOGENTRY"
+    """Build the XML string for a logbook entry.
 
-    severity = SubElement(log_entry, "severity")
-    severity.text = "NONE"
-
-    location = SubElement(log_entry, "location")
-    location.text = "not set"
-
-    keywords = SubElement(log_entry, "keywords")
-    keywords.text = "none"
-
-    time_tag = SubElement(log_entry, "time")
-    time_tag.text = timestamp.strftime("%H:%M:%S")
-
-    isodate = SubElement(log_entry, "isodate")
-    isodate.text = timestamp.strftime("%Y-%m-%d")
-
-    author = SubElement(log_entry, "author")
-    author.text = username
-
-    category = SubElement(log_entry, "category")
-    category.text = "USERLOG"
-
-    title_tag = SubElement(log_entry, "title")
-    title_tag.text = title
-
-    time_string = timestamp.strftime("%Y-%m-%dT%H%M%S")
-    metainfo = SubElement(log_entry, "metainfo")
-    metainfo.text = f"{time_string}-00.xml"
-
-    if attachment_filename is not None:
-        link = SubElement(log_entry, "link")
-        link.text = attachment_filename
+    The elog web application expects bare tags with no root element wrapper.
+    """
+    lines = [
+        f"<severity>NONE</severity>",
+        f"<location>not set</location>",
+        f"<keywords>none</keywords>",
+        f"<time>{timestamp.strftime('%H:%M:%S')}</time>",
+        f"<isodate>{timestamp.strftime('%Y-%m-%d')}</isodate>",
+        f"<author>{_xml_escape(username)}</author>",
+        f"<category>USERLOG</category>",
+        f"<title>{_xml_escape(title)}</title>",
+        f"<metainfo>{base_name}.xml</metainfo>",
+    ]
 
     if thumbnail_filename is not None:
-        file_tag = SubElement(log_entry, "file")
-        file_tag.text = thumbnail_filename
+        lines.append(f"<file>{thumbnail_filename}</file>")
+    else:
+        lines.append("<file></file>")
 
-    # The logbook parser requires the text tag to come last.
-    text_tag = SubElement(log_entry, "text")
-    text_tag.text = text if text else " "
+    if attachment_filename is not None:
+        lines.append(f"<link>{attachment_filename}</link>")
+    else:
+        lines.append("<link></link>")
 
-    raw = tostring(log_entry, encoding="unicode")
-    formatted = re.sub(r"(?=<[^/].*>)", "\n", raw)
-    return formatted.lstrip("\n") + "\n"
+    lines.append(f"<text>{_xml_escape(text) if text else ' '}</text>")
+    return "\n".join(lines) + "\n"
+
+
+def _xml_escape(s: str) -> str:
+    """Escape special characters for XML content."""
+    s = s.replace("&", "&amp;")
+    s = s.replace('"', "&quot;")
+    s = s.replace("'", "&apos;")
+    s = s.replace("<", "&lt;")
+    s = s.replace(">", "&gt;")
+    return s
 
 
 def _generate_thumbnail(image_path: Path, output_path: Path, max_size: tuple[int, int]) -> None:
